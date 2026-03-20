@@ -1,0 +1,9 @@
+# Go build files
+*.exe
+*.out
+
+# Logs
+wal.log
+
+# macOS
+.DS_Store
