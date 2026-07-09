@@ -1,17 +1,20 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 func main() {
 	store := NewStore()
 
-	store.Set("name", "Thisaru")
+	store.SetWithTTL("name", "Thisaru", 5)
 
 	value, ok := store.Get("name")
-	fmt.Println("Before delete:", value, ok)
+	fmt.Println("Immediately:", value, ok)
 
-	store.Delete("name")
+	time.Sleep(6 * time.Second)
 
 	value, ok = store.Get("name")
-	fmt.Println("After delete:", value, ok)
+	fmt.Println("After 6 seconds:", value, ok)
 }
