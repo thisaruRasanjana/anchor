@@ -8,13 +8,11 @@ import (
 func main() {
 	store := NewStore()
 
-	store.SetWithTTL("name", "Thisaru", 5)
+store.SetWithTTL("name", "Thisaru", 3)
 
-	value, ok := store.Get("name")
-	fmt.Println("Immediately:", value, ok)
+fmt.Println("Waiting 5 seconds...")
+time.Sleep(5 * time.Second)
 
-	time.Sleep(6 * time.Second)
-
-	value, ok = store.Get("name")
-	fmt.Println("After 6 seconds:", value, ok)
+value, ok := store.Get("name")
+fmt.Println(value, ok)
 }

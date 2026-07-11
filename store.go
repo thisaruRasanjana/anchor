@@ -1,9 +1,13 @@
 package main
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 type Store struct {
 	data map[string]Entry
+	mu   sync.RWMutex
 }
 
 type Entry struct {
@@ -12,16 +16,22 @@ type Entry struct {
 }
 
 func NewStore() *Store {
-	return &Store{
+	s := &Store{
 		data: make(map[string]Entry),
 	}
+	go s.StartExpirationWorker()
+	return s
 }
 
 func (s *Store) Set(key string, value string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.data[key] = Entry{Value: value}
 }
 
 func (s *Store) Get(key string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	entry, ok := s.data[key]
 	if !ok {
 		return "", false
@@ -40,10 +50,28 @@ func (s *Store) Get(key string) (string, bool) {
 }
 
 func (s *Store) Delete(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	delete(s.data, key)
 }
 
 func (s *Store) SetWithTTL(key string, value string, ttl int) {
 	expirationTime := time.Now().Add(time.Duration(ttl) * time.Second)
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.data[key] = Entry{Value: value, ExpiresAt: expirationTime}
+}
+
+func (s *Store) StartExpirationWorker() {
+	for {
+		s.mu.Lock()
+		now := time.Now()
+		for key, entry := range s.data {
+			if !entry.ExpiresAt.IsZero() && now.After(entry.ExpiresAt) {
+				delete(s.data, key)
+			}
+		}
+		s.mu.Unlock()
+		time.Sleep(1 * time.Second)
+	}
 }
