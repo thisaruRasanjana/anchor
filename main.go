@@ -2,17 +2,26 @@ package main
 
 import (
 	"fmt"
-	"time"
+	"sync"
 )
 
 func main() {
 	store := NewStore()
+	var wg sync.WaitGroup
 
-store.SetWithTTL("name", "Thisaru", 3)
-
-fmt.Println("Waiting 5 seconds...")
-time.Sleep(5 * time.Second)
-
-value, ok := store.Get("name")
-fmt.Println(value, ok)
+	wg.Add(100)
+	for i := 0; i < 100; i++ {
+		go func(i int) {
+			defer wg.Done()
+			key := fmt.Sprintf("key%d", i)
+			value := fmt.Sprintf("value%d", i)
+			store.SetWithTTL(key, value, 5)
+			_, ok := store.Get(key)
+			if !ok {
+				fmt.Printf("ERROR: %s not found\n", key)
+			}
+		}(i)
+	}
+	wg.Wait()
+	fmt.Println("All workers finished successfully.")
 }
