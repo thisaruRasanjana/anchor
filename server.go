@@ -8,7 +8,7 @@ import (
 	"strconv"
 )
 
-func StartServer(store *Store) error {
+func StartServer(store *Store, wal *WAL) error {
 	listener, err := net.Listen("tcp", ":7379")
 	if err != nil {
 		return fmt.Errorf("failed to listen on :7379: %w", err)
@@ -21,11 +21,11 @@ func StartServer(store *Store) error {
 			fmt.Printf("failed to accept connection: %v\n", err)
 			continue
 		}
-		go handleConnection(conn, store)
+		go handleConnection(conn, store, wal)
 	}
 }
 
-func handleConnection(conn net.Conn, store *Store) {
+func handleConnection(conn net.Conn, store *Store, wal *WAL) {
 	defer conn.Close()
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
@@ -38,6 +38,11 @@ func handleConnection(conn net.Conn, store *Store) {
 		case "SET":
 			if len(parts) != 3 {
 				fmt.Fprintln(conn, "ERROR: usage: SET <key> <value>")
+				continue
+			}
+			record := strings.Join(parts, " ")
+			if err := wal.Append(record); err != nil {
+				fmt.Fprintf(conn, "ERROR: failed to append to WAL: %v\n", err)
 				continue
 			}
 			store.Set(parts[1], parts[2])

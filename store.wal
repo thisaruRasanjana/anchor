@@ -1,0 +1,4 @@
+SET name Thisaru
+SET age 22
+DELETE age
+SET name Alice
