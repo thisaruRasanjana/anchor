@@ -6,27 +6,29 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"time"
 )
 
-func StartServer(store *Store, wal *WAL) error {
+func StartServer(db *Database) error {
 	listener, err := net.Listen("tcp", ":7379")
 	if err != nil {
 		return fmt.Errorf("failed to listen on :7379: %w", err)
 	}
 	defer listener.Close()
+
 	fmt.Println("Server listening on :7379")
+
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			fmt.Printf("failed to accept connection: %v\n", err)
 			continue
 		}
-		go handleConnection(conn, store, wal)
+
+		go handleConnection(conn, db)
 	}
 }
 
-func handleConnection(conn net.Conn, store *Store, wal *WAL) {
+func handleConnection(conn net.Conn, db *Database) {
 	defer conn.Close()
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
@@ -41,12 +43,11 @@ func handleConnection(conn net.Conn, store *Store, wal *WAL) {
 				fmt.Fprintln(conn, "ERROR: usage: SET <key> <value>")
 				continue
 			}
-			record := strings.Join(parts, " ")
-			if err := wal.Append(record); err != nil {
-				fmt.Fprintf(conn, "ERROR: failed to append to WAL: %v\n", err)
+			if err := db.Set(parts[1], parts[2]); err != nil {
+				fmt.Fprintf(conn, "ERROR: failed to set key: %v\n", err)
 				continue
 			}
-			store.Set(parts[1], parts[2])
+
 			fmt.Fprintln(conn, "OK")
 
 		case "GET":
@@ -54,7 +55,7 @@ func handleConnection(conn net.Conn, store *Store, wal *WAL) {
 				fmt.Fprintln(conn, "ERROR: usage: GET <key>")
 				continue
 			}
-			value, ok := store.Get(parts[1])
+			value, ok := db.Get(parts[1])
 			if !ok {
 				fmt.Fprintln(conn, "NOT FOUND")
 			} else {
@@ -62,20 +63,16 @@ func handleConnection(conn net.Conn, store *Store, wal *WAL) {
 			}
 
 		case "DELETE":
+
 			if len(parts) != 2 {
 				fmt.Fprintln(conn, "ERROR: usage: DELETE <key>")
 				continue
 			}
-
-			record := strings.Join(parts, " ")
-
-			if err := wal.Append(record); err != nil {
-				fmt.Fprintf(conn, "ERROR: failed to append to WAL: %v\n", err)
+			deleted, err := db.Delete(parts[1])
+			if err != nil {
+				fmt.Fprintf(conn, "ERROR: failed to delete key: %v\n", err)
 				continue
 			}
-
-			deleted := store.Delete(parts[1])
-
 			if deleted {
 				fmt.Fprintln(conn, "OK")
 			} else {
@@ -94,26 +91,10 @@ func handleConnection(conn net.Conn, store *Store, wal *WAL) {
 				continue
 			}
 
-			if ttl <= 0 {
-				fmt.Fprintln(conn, "ERROR: TTL must be greater than 0")
+			if err := db.SetTTL(parts[1], parts[2], ttl); err != nil {
+				fmt.Fprintf(conn, "ERROR: %v\n", err)
 				continue
 			}
-
-			expiresAt := time.Now().Add(time.Duration(ttl) * time.Second)
-
-			record := fmt.Sprintf(
-				"SET_EXPIRED %s %s %s",
-				parts[1],
-				parts[2],
-				expiresAt.Format(time.RFC3339Nano),
-			)
-
-			if err := wal.Append(record); err != nil {
-				fmt.Fprintf(conn, "ERROR: failed to append to WAL: %v\n", err)
-				continue
-			}
-
-			store.SetWithExpiration(parts[1], parts[2], expiresAt)
 
 			fmt.Fprintln(conn, "OK")
 

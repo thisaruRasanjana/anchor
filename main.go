@@ -17,7 +17,9 @@ func main() {
 
 	fmt.Println("Recovery complete")
 
-	if err := StartServer(store, wal); err != nil {
+	db := NewDatabase(store, wal)
+
+	if err := StartServer(db); err != nil {
 		panic(err)
 	}
 }
