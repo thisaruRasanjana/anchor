@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
 type WAL struct {
 	file *os.File
+	mu   sync.Mutex
 }
 
 func NewWAL(filename string) (*WAL, error) {
@@ -21,6 +23,9 @@ func NewWAL(filename string) (*WAL, error) {
 }
 
 func (wal *WAL) Append(entry string) error {
+	wal.mu.Lock()
+	defer wal.mu.Unlock()
+
 	_, err := wal.file.WriteString(entry + "\n")
 	if err != nil {
 		return err
