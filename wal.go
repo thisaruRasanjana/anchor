@@ -1,12 +1,14 @@
 package main
-import(
+
+import (
 	"bufio"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
-type WAL struct{
+type WAL struct {
 	file *os.File
 }
 
@@ -50,12 +52,29 @@ func (wal *WAL) Replay(store *Store) error {
 			store.Set(parts[1], parts[2])
 
 		case "DELETE":
-    		if len(parts) != 2 {
-        		return fmt.Errorf("invalid DELETE command in WAL: %s", line)
-    		}
-    		store.Delete(parts[1])
+			if len(parts) != 2 {
+				return fmt.Errorf("invalid DELETE command in WAL: %s", line)
+			}
+			store.Delete(parts[1])
+
+		case "SET_EXPIRED":
+			if len(parts) != 4 {
+				return fmt.Errorf("invalid SET_EXPIRED command in WAL: %s", line)
+			}
+
+			expiresAt, err := time.Parse(time.RFC3339Nano, parts[3])
+			if err != nil {
+				return fmt.Errorf("invalid expiration time in WAL: %s", line)
+			}
+
+			if !time.Now().Before(expiresAt) {
+				continue
+			}
+			store.SetWithExpiration(parts[1], parts[2], expiresAt)
+
 		default:
 			return fmt.Errorf("unknown command in WAL: %s", line)
+
 		}
 	}
 	return scanner.Err()

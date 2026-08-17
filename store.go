@@ -79,3 +79,13 @@ func (s *Store) StartExpirationWorker() {
 		time.Sleep(1 * time.Second)
 	}
 }
+
+func (s *Store) SetWithExpiration(key, value string, expiresAt time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.data[key] = Entry{
+		Value:     value,
+		ExpiresAt: expiresAt,
+	}
+}

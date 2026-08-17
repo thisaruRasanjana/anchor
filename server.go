@@ -1,11 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"net"
-	"bufio"
-	"strings"
 	"strconv"
+	"strings"
+	"time"
 )
 
 func StartServer(store *Store, wal *WAL) error {
@@ -32,7 +33,7 @@ func handleConnection(conn net.Conn, store *Store, wal *WAL) {
 		command := scanner.Text()
 		parts := strings.Fields(command)
 		if len(parts) == 0 {
-    		continue
+			continue
 		}
 		switch parts[0] {
 		case "SET":
@@ -65,7 +66,16 @@ func handleConnection(conn net.Conn, store *Store, wal *WAL) {
 				fmt.Fprintln(conn, "ERROR: usage: DELETE <key>")
 				continue
 			}
+
+			record := strings.Join(parts, " ")
+
+			if err := wal.Append(record); err != nil {
+				fmt.Fprintf(conn, "ERROR: failed to append to WAL: %v\n", err)
+				continue
+			}
+
 			deleted := store.Delete(parts[1])
+
 			if deleted {
 				fmt.Fprintln(conn, "OK")
 			} else {
@@ -77,12 +87,34 @@ func handleConnection(conn net.Conn, store *Store, wal *WAL) {
 				fmt.Fprintln(conn, "ERROR: usage: SETTTL <key> <value> <ttl>")
 				continue
 			}
+
 			ttl, err := strconv.Atoi(parts[3])
 			if err != nil {
 				fmt.Fprintln(conn, "ERROR: TTL must be an integer")
 				continue
 			}
-			store.SetWithTTL(parts[1], parts[2], ttl)
+
+			if ttl <= 0 {
+				fmt.Fprintln(conn, "ERROR: TTL must be greater than 0")
+				continue
+			}
+
+			expiresAt := time.Now().Add(time.Duration(ttl) * time.Second)
+
+			record := fmt.Sprintf(
+				"SET_EXPIRED %s %s %s",
+				parts[1],
+				parts[2],
+				expiresAt.Format(time.RFC3339Nano),
+			)
+
+			if err := wal.Append(record); err != nil {
+				fmt.Fprintf(conn, "ERROR: failed to append to WAL: %v\n", err)
+				continue
+			}
+
+			store.SetWithExpiration(parts[1], parts[2], expiresAt)
+
 			fmt.Fprintln(conn, "OK")
 
 		default:

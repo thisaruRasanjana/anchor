@@ -1,4 +1,1 @@
-SET name Thisaru
-SET age 22
-DELETE age
-SET name Alice
+SET_EXPIRED token abc123 2026-08-17T18:45:55.607239+05:30
