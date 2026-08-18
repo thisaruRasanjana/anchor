@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -142,4 +144,162 @@ func TestStoreConcurrentAccess(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func TestServerConcurrentMixedOperations(t *testing.T) {
+	const clients = 20
+	const operationsPerClient = 50
+
+	dir := t.TempDir()
+
+	wal, err := NewWAL(dir + "/test.wal")
+	if err != nil {
+		t.Fatalf("failed to create WAL: %v", err)
+	}
+	defer wal.Close()
+
+	store := NewStore()
+	db := NewDatabase(store, wal)
+
+	var wg sync.WaitGroup
+
+	for i := 0; i < clients; i++ {
+		wg.Add(1)
+
+		go func(clientID int) {
+			defer wg.Done()
+
+			clientConn, serverConn := net.Pipe()
+
+			defer clientConn.Close()
+			defer serverConn.Close()
+
+			go handleConnection(serverConn, db)
+
+			reader := bufio.NewReader(clientConn)
+
+			for j := 0; j < operationsPerClient; j++ {
+				key := fmt.Sprintf("client%d-key%d", clientID, j)
+				value := fmt.Sprintf("value-%d", j)
+
+				switch j % 4 {
+				case 0:
+					response := sendCommand(
+						t,
+						reader,
+						clientConn,
+						fmt.Sprintf("SET %s %s", key, value),
+					)
+
+					if response != "OK" {
+						t.Errorf(
+							"SET %s: expected OK, got %q",
+							key,
+							response,
+						)
+					}
+
+				case 1:
+					sendCommand(
+						t,
+						reader,
+						clientConn,
+						fmt.Sprintf("SET %s %s", key, value),
+					)
+
+					response := sendCommand(
+						t,
+						reader,
+						clientConn,
+						fmt.Sprintf("GET %s", key),
+					)
+
+					if response != value {
+						t.Errorf(
+							"GET %s: expected %q, got %q",
+							key,
+							value,
+							response,
+						)
+					}
+
+				case 2:
+					sendCommand(
+						t,
+						reader,
+						clientConn,
+						fmt.Sprintf("SET %s %s", key, value),
+					)
+
+					response := sendCommand(
+						t,
+						reader,
+						clientConn,
+						fmt.Sprintf("DELETE %s", key),
+					)
+
+					if response != "OK" {
+						t.Errorf(
+							"DELETE %s: expected OK, got %q",
+							key,
+							response,
+						)
+					}
+
+				case 3:
+					response := sendCommand(
+						t,
+						reader,
+						clientConn,
+						fmt.Sprintf("SETTTL %s %s 10", key, value),
+					)
+
+					if response != "OK" {
+						t.Errorf(
+							"SETTTL %s: expected OK, got %q",
+							key,
+							response,
+						)
+					}
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify keys whose final operation was SET.
+	for i := 0; i < clients; i++ {
+		for j := 0; j < operationsPerClient; j++ {
+			key := fmt.Sprintf("client%d-key%d", i, j)
+
+			switch j % 4 {
+			case 0, 1, 3:
+				value, ok := db.Get(key)
+
+				if !ok {
+					t.Errorf("expected key %q to exist", key)
+					continue
+				}
+
+				expected := fmt.Sprintf("value-%d", j)
+
+				if value != expected {
+					t.Errorf(
+						"key %q: expected %q, got %q",
+						key,
+						expected,
+						value,
+					)
+				}
+
+			case 2:
+				_, ok := db.Get(key)
+
+				if ok {
+					t.Errorf("expected key %q to be deleted", key)
+				}
+			}
+		}
+	}
 }

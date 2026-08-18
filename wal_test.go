@@ -230,3 +230,99 @@ func TestWALConcurrentAppend(t *testing.T) {
 		t.Fatalf("expected 100 WAL records, got %d", len(lines))
 	}
 }
+
+func TestWALReplayIncompleteFinalRecord(t *testing.T) {
+	dir := t.TempDir()
+	filename := dir + "/test.wal"
+
+	file, err := os.Create(filename)
+	if err != nil {
+		t.Fatalf("failed to create WAL: %v", err)
+	}
+
+	_, err = file.WriteString(
+		"SET name Thisaru\n" +
+			"SET age 22\n" +
+			"SET broken",
+	)
+	if err != nil {
+		t.Fatalf("failed to write WAL: %v", err)
+	}
+
+	if err := file.Close(); err != nil {
+		t.Fatalf("failed to close WAL: %v", err)
+	}
+
+	wal, err := NewWAL(filename)
+	if err != nil {
+		t.Fatalf("failed to reopen WAL: %v", err)
+	}
+	defer wal.Close()
+
+	store := NewStore()
+
+	err = wal.Replay(store)
+
+	if err != nil {
+		t.Fatalf("expected incomplete final record to be ignored, got: %v", err)
+	}
+
+	value, ok := store.Get("name")
+	if !ok {
+		t.Fatal("expected name to be recovered")
+	}
+
+	if value != "Thisaru" {
+		t.Fatalf("expected Thisaru, got %q", value)
+	}
+
+	value, ok = store.Get("age")
+	if !ok {
+		t.Fatal("expected age to be recovered")
+	}
+
+	if value != "22" {
+		t.Fatalf("expected 22, got %q", value)
+	}
+
+	_, ok = store.Get("broken")
+	if ok {
+		t.Fatal("incomplete final record should not be recovered")
+	}
+}
+
+func TestWALReplayMalformedCompleteRecord(t *testing.T) {
+	dir := t.TempDir()
+	filename := dir + "/test.wal"
+
+	file, err := os.Create(filename)
+	if err != nil {
+		t.Fatalf("failed to create WAL: %v", err)
+	}
+
+	_, err = file.WriteString(
+		"SET name Thisaru\n" +
+			"SET broken\n",
+	)
+	if err != nil {
+		t.Fatalf("failed to write WAL: %v", err)
+	}
+
+	if err := file.Close(); err != nil {
+		t.Fatalf("failed to close WAL: %v", err)
+	}
+
+	wal, err := NewWAL(filename)
+	if err != nil {
+		t.Fatalf("failed to reopen WAL: %v", err)
+	}
+	defer wal.Close()
+
+	store := NewStore()
+
+	err = wal.Replay(store)
+
+	if err == nil {
+		t.Fatal("expected replay to fail on malformed complete record")
+	}
+}

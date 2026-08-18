@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -34,36 +35,64 @@ func (wal *WAL) Append(entry string) error {
 }
 
 func (wal *WAL) Close() error {
+	wal.mu.Lock()
+	defer wal.mu.Unlock()
+
 	return wal.file.Close()
 }
 
 func (wal *WAL) Replay(store *Store) error {
+	wal.mu.Lock()
+	defer wal.mu.Unlock()
+
 	_, err := wal.file.Seek(0, 0)
 	if err != nil {
 		return err
 	}
-	scanner := bufio.NewScanner(wal.file)
-	for scanner.Scan() {
-		line := scanner.Text()
+	reader := bufio.NewReader(wal.file)
+	for {
+		line, err := reader.ReadString('\n')
+		if len(line) == 0 && err == io.EOF {
+			break
+		}
+		terminated := strings.HasSuffix(line, "\n")
+
+		line = strings.TrimSuffix(line, "\n")
+		line = strings.TrimSuffix(line, "\r")
+
 		parts := strings.Fields(line)
+
 		if len(parts) == 0 {
+			if err == io.EOF {
+				break
+			}
 			continue
 		}
+
 		switch parts[0] {
 		case "SET":
 			if len(parts) != 3 {
+				if err == io.EOF && !terminated {
+					break
+				}
 				return fmt.Errorf("invalid SET command in WAL: %s", line)
 			}
 			store.Set(parts[1], parts[2])
 
 		case "DELETE":
 			if len(parts) != 2 {
+				if err == io.EOF && !terminated {
+					break
+				}
 				return fmt.Errorf("invalid DELETE command in WAL: %s", line)
 			}
 			store.Delete(parts[1])
 
 		case "SET_EXPIRED":
 			if len(parts) != 4 {
+				if err == io.EOF && !terminated {
+					break
+				}
 				return fmt.Errorf("invalid SET_EXPIRED command in WAL: %s", line)
 			}
 
@@ -72,15 +101,21 @@ func (wal *WAL) Replay(store *Store) error {
 				return fmt.Errorf("invalid expiration time in WAL: %s", line)
 			}
 
-			if !time.Now().Before(expiresAt) {
-				continue
+			if time.Now().Before(expiresAt) {
+				store.SetWithExpiration(parts[1], parts[2], expiresAt)
 			}
-			store.SetWithExpiration(parts[1], parts[2], expiresAt)
 
 		default:
 			return fmt.Errorf("unknown command in WAL: %s", line)
+		}
 
+		if err == io.EOF {
+			break
+		}
+
+		if err != nil {
+			return err
 		}
 	}
-	return scanner.Err()
+	return nil
 }

@@ -1,6 +1,11 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+)
 
 func main() {
 	store := NewStore()
@@ -19,7 +24,15 @@ func main() {
 
 	db := NewDatabase(store, wal)
 
-	if err := StartServer(db); err != nil {
+	stop := make(chan os.Signal, 1)
+
+	signal.Notify(
+		stop,
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+
+	if err := StartServer(db, stop); err != nil {
 		panic(err)
 	}
 }
