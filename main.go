@@ -10,7 +10,7 @@ import (
 func main() {
 	store := NewStore()
 
-	wal, err := NewWAL("store.wal")
+	wal, err := NewWAL("/app/data/store.wal")
 	if err != nil {
 		panic(err)
 	}
