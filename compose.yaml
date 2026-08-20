@@ -1,3 +1,5 @@
+name: anchor
+
 services:
   anchor:
     image: ghcr.io/thisarurasanjana/anchor:dev

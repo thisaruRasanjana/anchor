@@ -7,17 +7,17 @@ COPY go.mod ./
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o kvstore .
+RUN CGO_ENABLED=0 GOOS=linux go build -o anchor .
 
 # Runtime stage
 FROM alpine:3.22
 
 WORKDIR /app
 
-COPY --from=builder /app/kvstore .
+COPY --from=builder /app/anchor .
 
 EXPOSE 7379
 
 VOLUME ["/app/data"]
 
-CMD ["./kvstore"]
+CMD ["./anchor"]
