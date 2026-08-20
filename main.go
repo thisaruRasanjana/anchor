@@ -10,7 +10,12 @@ import (
 func main() {
 	store := NewStore()
 
-	wal, err := NewWAL("/app/data/store.wal")
+	walPath := os.Getenv("ANCHOR_WAL_PATH")
+	if walPath == "" {
+		walPath = "store.wal"
+	}
+
+	wal, err := NewWAL(walPath)
 	if err != nil {
 		panic(err)
 	}
