@@ -1,17 +1,43 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+)
 
 func main() {
 	store := NewStore()
 
-	store.Set("name", "Thisaru")
+	walPath := os.Getenv("ANCHOR_WAL_PATH")
+	if walPath == "" {
+		walPath = "store.wal"
+	}
 
-	value, ok := store.Get("name")
-	fmt.Println("Before delete:", value, ok)
+	wal, err := NewWAL(walPath)
+	if err != nil {
+		panic(err)
+	}
+	defer wal.Close()
 
-	store.Delete("name")
+	if err := wal.Replay(store); err != nil {
+		panic(err)
+	}
 
-	value, ok = store.Get("name")
-	fmt.Println("After delete:", value, ok)
+	fmt.Println("Recovery complete")
+
+	db := NewDatabase(store, wal)
+
+	stop := make(chan os.Signal, 1)
+
+	signal.Notify(
+		stop,
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+
+	if err := StartServer(db, stop); err != nil {
+		panic(err)
+	}
 }

@@ -7,3 +7,6 @@ wal.log
 
 # macOS
 .DS_Store
+
+# Runtime data
+store.wal

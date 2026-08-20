@@ -1,0 +1,16 @@
+name: anchor
+
+services:
+  anchor:
+    image: ghcr.io/thisarurasanjana/anchor:dev
+    container_name: anchor
+    environment:
+      ANCHOR_WAL_PATH: /app/data/store.wal
+    ports:
+      - "7379:7379"
+    volumes:
+      - anchor-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  anchor-data:

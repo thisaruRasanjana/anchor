@@ -1,0 +1,5 @@
+SET_EXPIRED token abc123 2026-08-17T18:45:55.607239+05:30
+SET name Thisaru
+DELETE name
+SET_EXPIRED token abc123 2026-08-17T20:31:37.023906+05:30
+SET persistent hello
